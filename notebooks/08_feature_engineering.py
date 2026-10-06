@@ -27,7 +27,9 @@
 
 # %%
 import _setup  # noqa: F401
+import os
 import subprocess
+import sys
 import warnings
 from pathlib import Path
 
@@ -158,10 +160,11 @@ print(f"\n'lift ảo' sẽ mất khi lên production: {auc_lat - auc_pit:+.3f} A
 
 # %%
 repo = ROOT / "app" / "feast_repo_ondemand"
-subprocess.run(["python", str(ROOT / "scripts" / "gen_spend.py")], check=True,
+feast_cli = str(Path(sys.executable).with_name("feast.exe" if os.name == "nt" else "feast"))
+subprocess.run([sys.executable, str(ROOT / "scripts" / "gen_spend.py")], check=True,
                capture_output=True)
-subprocess.run(["feast", "apply"], cwd=repo, check=True, capture_output=True)
-subprocess.run(["feast", "materialize-incremental", "2027-01-01T00:00:00"],
+subprocess.run([feast_cli, "apply"], cwd=repo, check=True, capture_output=True)
+subprocess.run([feast_cli, "materialize-incremental", "2027-01-01T00:00:00"],
                cwd=repo, check=True, capture_output=True)
 print("feast apply + materialize OK")
 

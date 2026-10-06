@@ -17,6 +17,7 @@
 import _setup  # noqa: F401
 import statistics
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -31,7 +32,8 @@ import httpx
 # %%
 ROOT = Path(_setup.__file__).resolve().parent.parent
 proc = subprocess.Popen(
-    ["uvicorn", "app.main:app", "--port", "8000", "--log-level", "warning"],
+    [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000",
+     "--log-level", "warning"],
     cwd=str(ROOT),
 )
 
@@ -63,7 +65,7 @@ for h in body["hits"][:3]:
     print(f"  {h['doc_id']:>14}  score={h['score']:.4f}  {h['title']}")
 
 # %% [markdown]
-# ## 3. TODO — Latency benchmark (100 queries × 3 modes)
+# ## 3. Latency benchmark (100 queries × 3 modes)
 #
 # Dùng 50 golden queries × 2 reps = 100 calls/mode. Ghi nhận latency từ
 # `body["latency_ms"]` (server-side, đã trừ network) HOẶC từ wall-clock httpx
@@ -77,6 +79,14 @@ import json
 DATA = ROOT / "data"
 golden = [json.loads(l) for l in (DATA / "golden_set.jsonl").open(encoding="utf-8")]
 
+# Warm up the embedding model, vector index and RRF path before measuring tail
+# latency. Cold-start time is a deployment concern, not request-time P99.
+with httpx.Client(base_url=URL, timeout=30.0, trust_env=False) as client:
+    for q in golden[:10]:
+        warm = client.get("/search", params={"q": q["query"], "mode": "hybrid"})
+        warm.raise_for_status()
+print("Warm-up: 10 hybrid queries completed")
+
 
 def percentile(values: list[float], p: float) -> float:
     n = len(values)
@@ -88,12 +98,16 @@ def percentile(values: list[float], p: float) -> float:
 def benchmark_mode(mode: str, reps: int = 2) -> dict[str, float]:
     server_latencies: list[float] = []
     wall_latencies: list[float] = []
-    for _ in range(reps):
-        for q in golden:
-            t0 = time.perf_counter()
-            r = httpx.get(f"{URL}/search", params={"q": q["query"], "mode": mode})
-            wall_latencies.append((time.perf_counter() - t0) * 1000)
-            server_latencies.append(r.json()["latency_ms"])
+    # Reuse one HTTP connection. Creating a new TCP client per request would
+    # pollute wall-clock latency and makes the Windows notebook needlessly slow.
+    with httpx.Client(base_url=URL, timeout=30.0, trust_env=False) as client:
+        for _ in range(reps):
+            for q in golden:
+                t0 = time.perf_counter()
+                r = client.get("/search", params={"q": q["query"], "mode": mode})
+                r.raise_for_status()
+                wall_latencies.append((time.perf_counter() - t0) * 1000)
+                server_latencies.append(r.json()["latency_ms"])
     return {
         "p50_server": percentile(server_latencies, 0.50),
         "p95_server": percentile(server_latencies, 0.95),

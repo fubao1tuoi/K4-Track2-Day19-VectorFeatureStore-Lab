@@ -45,6 +45,24 @@ Yêu cầu: **Python 3.10–3.14**. Không cần Docker, không cần GPU, khôn
 Khi `setup-lite.sh` báo `All checks passed`, mở
 **http://localhost:8888/lab/tree/01_embeddings_index.ipynb** và bắt đầu.
 
+### Windows PowerShell (không cần `bash` hoặc `make`)
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup-lite-windows.ps1
+& "..\.venv\Scripts\Activate.ps1"
+
+python -m pytest -q
+python scripts\benchmark.py
+python -m uvicorn app.main:app --reload --port 8000
+# Mở terminal thứ hai để chạy Jupyter:
+python -m jupyter lab --notebook-dir=notebooks
+```
+
+Script PowerShell dùng virtual environment dùng chung `..\.venv` ở workspace
+`AITC VinUni` (không tạo `.venv` con), cài dependency, tạo `.env`, sinh dữ liệu core/advanced, chuyển
+Jupytext source thành notebook và chạy smoke test ban đầu.
+
 ### Tất cả lệnh `make`
 
 ```
